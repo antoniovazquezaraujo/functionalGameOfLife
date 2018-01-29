@@ -8,63 +8,58 @@
  * 28/1/2018
  * 
  */
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+class Cell<T>{
+	public List<List<T>> map;
+	public int col;
+	public int row;
+	public Cell(List<List<T>> cells, int col, int row) {
+		this.map = cells;
+		this.col = col;
+		this.row = row;
+	}
+}
 public class GameOfLife {
 	public static final int PAUSE= 300;
 	public static final int ROWS = 20;
-	public static final int COLS = 120;
+	public static final int COLS = 80;
 
 	public static void main(String[] args) {
-		gameLoop(randomizeCells(createCells()));
-	}
-
-	private static void gameLoop( List<Boolean> cells) {
-		while(true) {
+		Random random = new Random();
+		List<List<Boolean>> cells;
+		cells = new ArrayList<List<Boolean>>();
+		cells = applyToAll(cells, (t) -> false); 
+		cells = applyToAll(cells, (t) -> random.nextBoolean()); 
+		while (true) {
+			cells = applyToAll(cells, rules); 
+			applyToAll(cells, (t) -> {viewCell(t); return 0;});
 			pause();
 			clearScreen();
-			cells= applyRules(cells, getNeighbours(cells), rules);
-			showCells(cells);
 		}
 	}
 
-	private static List<Boolean> createCells() {
+	static int countNeighbours(List<List<Boolean>> list, int col, int row){
 		return IntStream
-			.range(0, numCells())
-			.mapToObj(t -> false)
-			.collect(Collectors.<Boolean>toList());
-	}
-
-	public static List<Boolean> randomizeCells(List<Boolean> list) {
-		Random random = new Random();
-		return list.stream()
-			.map(t -> random.nextBoolean())
-			.collect(Collectors.toList());
-	}
-	public static Function<Integer, Function<Boolean, Boolean>> rules = (numNeighbours) -> {
-		return (t) -> (!t && numNeighbours == 3) || (t &&(numNeighbours == 2 || numNeighbours == 3));	
-	};
-
-	public static int countNeighbours(final List<Boolean> cells, int pos) {
-		return countNeighbours(cells, colOf(pos), rowOf(pos));
-	}
-
-	public static int countNeighbours(final List<Boolean> cells, int paramCol, int paramRow) {
-		return IntStream
-			.rangeClosed(-1, 1)
-	        .mapToObj(col -> 
-	        	IntStream.rangeClosed(-1, 1)
-	        	.filter(row -> !(col== 0 && row==0)) // no se cuenta a sí mismo
-	        	.mapToObj(row -> {return getAt(cells, paramCol+col, paramRow+row);})
-	        	.filter(cellValue -> cellValue == true) // solo se cuentan las celdas vivas
-	        	.count()
-        	)
-	        .map(longCountValue -> Math.toIntExact(longCountValue))
-	        .reduce(0, Integer::sum);
+			.rangeClosed(row-1, row+1)
+			.mapToObj(rangeRow ->
+				IntStream
+				.rangeClosed(col-1, col+1)
+				.filter(rangeCol -> !(rangeCol == col && rangeRow == row))
+				.mapToObj(rangeCol ->
+					GameOfLife.getAt(list, rangeCol, rangeRow).orElse(false)
+				)
+				.filter(cellValue -> cellValue == true)
+				.count()
+			)
+			.map(longCountValue -> Math.toIntExact(longCountValue))
+			.reduce(0, Integer::sum);
 	}
 
 	public static String simbolOf(Boolean value) {
@@ -75,25 +70,15 @@ public class GameOfLife {
 		}
 	}
 
-	public static List<Boolean> applyRules(final List<Boolean> lives, final List<Integer> neighbours,
-			Function<Integer, Function<Boolean, Boolean>> rule) {
-		return IntStream
-				.range(0, numCells())
-				.mapToObj(t -> rule.apply(neighbours.get(t)).apply(lives.get(t)))
-				.collect(Collectors.toList());
-	}
+	public static String selectFormat  (Integer t) {
+		if((t+1)% COLS == 0){
+			return "%1.1s%n";
+		}else {
+			return "%1s";
+		}
+	};
 
-	private static void showCells(List<Boolean> cells) {
-		IntStream.range(0, numCells()).mapToObj(t -> {
-			if ((t + 1) % COLS == 0) {
-				return String.format("%1.1s%n", simbolOf(cells.get(t)));
-			} else {
-				return String.format("%1s", simbolOf(cells.get(t)));
-			}
-		}).forEach(System.out::print);
-	}
-
-	private static void pause() {
+	public static void pause() {
 		try {
 			Thread.sleep(PAUSE);
 		} catch (InterruptedException e) {
@@ -101,11 +86,28 @@ public class GameOfLife {
 		}
 	}
 
-	private static List<Integer> getNeighbours(List<Boolean> cells) {
+	public static  void viewCell(Cell<Boolean>  cell) {
+			System.out.print(String.format(
+					selectFormat(cell.col),
+					simbolOf(getAt(cell.map ,cell.col,cell.row).orElse(false))));
+	}
+	static Function<Cell<Boolean>, Boolean>  rules = (cell) ->{
+		Boolean value = getAt(cell.map, cell.col, cell.row).orElse(false);
+		int numNeighbours = countNeighbours(cell.map, cell.col, cell.row);
+		return ((value == false) && numNeighbours == 3) || ((value==true) &&(numNeighbours == 2 || numNeighbours == 3));	
+	};
+	public static <E, V> List<List<V>> applyToAll(List<List<E>> cells, Function<Cell<E>,V> cellFunction) {
 		return IntStream
-				.range(0, cells.size())
-				.mapToObj(t -> countNeighbours(cells, t))
-				.collect(Collectors.toList());
+			.range(0, ROWS)
+			.mapToObj(row -> 
+				IntStream
+				.range(0, COLS)
+				.mapToObj(col ->
+					cellFunction.apply(new Cell<E>(cells, col, row))
+				)
+			.collect(Collectors.<V>toList())
+			)
+			.collect(Collectors.<List<V>>toList());
 	}
 
 	public static void clearScreen() {
@@ -114,44 +116,15 @@ public class GameOfLife {
 		}
 	}
 
-	public static int numCells() {
-		return COLS * ROWS;
+	public static <T> void setAt(List<List<T>> list, int col, int row, T value) {
+		if(col<0 || col >= COLS) return ;
+		if(row<0 || row >= ROWS) return ;
+		list.get(row).set(col, value);
 	}
 
-	public static int rowOf(int pos) {
-		return pos / COLS;
-	}
-
-	public static int colOf(int pos) {
-		return pos % COLS;
-	}
-
-	public static int posOf(int col, int row) {
-		if (col < 0 || col >= COLS || row < 0 || row >= ROWS) {
-			return -1;
-		}
-		return row * COLS + col;
-	}
-
-	public static void setAt(List<Boolean> list, int col, int row, Boolean value) {
-		int pos = posOf(col, row);
-		if (pos != -1) {
-			list.set(pos, value);
-		}
-	}
-
-	public static Boolean getAt(List<Boolean> list, int col, int row) {
-		int pos = posOf(col, row);
-		if (pos != -1) {
-			return list.get(pos);
-		}
-		return false;
-	}
-
-	public static Boolean getAt(List<Boolean> list, int pos) {
-		if (pos < 0 || pos >= numCells()) {
-			return false;
-		}
-		return list.get(pos) ;
+	public static <T> Optional<T> getAt(List<List<T>> list, int col, int row) {
+		if(col<0 || col >= COLS) return Optional.empty();
+		if(row<0 || row >= ROWS) return Optional.empty();
+		return Optional.of(list.get(row).get(col));
 	}
 }
